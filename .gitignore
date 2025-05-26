@@ -1,0 +1,5 @@
+backend/llm_scripts/Include
+backend/llm_scripts/Scripts
+backend/llm_scripts/Lib
+backend/llm_scripts/*.cfg
+frontend/node_modules

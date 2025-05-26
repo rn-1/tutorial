@@ -6,12 +6,13 @@ import (
 	"context"
 	"log"
 	"net/http"
-
+	"os/exec"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/pinecone-io/go-pinecone/v3/pinecone"
 	"gopkg.in/src-d/go-git.v4"
+	"os"
 )
 
 // ROUTES
@@ -21,12 +22,11 @@ import (
 type repoSessions struct {
 	url   string
 	token string
-	// maybe some other characteristics
+	// maybe some other characteristics? we'll see as we need.
 }
 
 // Global Variables
-var active_repos []string // this needs some kind of threading or something
-var active_sessions []*repoSessions
+var active_repos []repoSessions // this needs some kind of threading or something
 
 func queryRepo(w http.ResponseWriter, r *http.Request) {
 	// TODO
@@ -34,8 +34,10 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 	// we should give them a cookie
 }
 
-func cleanUpRepo(url string) {
+func cleanUpRepo(token string) {
+	// now we will do all of this via the tokens as opposed to the string names
 
+	for 
 }
 
 func cloneGithub(url string) (status int) {
@@ -103,8 +105,10 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func chunk_files(url string) {
-
+func chunk_files(uuid string) {
+	cmd := exec.Command("python3", fmt.sprintf("../llm_scripts/queryRepo.py --workingdir "))
+	// this creates a json with the uuid
+	os.open(fmt.sprintf)
 }
 
 func main() {
