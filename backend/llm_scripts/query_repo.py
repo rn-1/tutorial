@@ -1,8 +1,9 @@
-import LangChain
+import langchain
 
 from langchain.document_loaders import DirectoryLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
+from 
 
 import argparse 
 import json
@@ -39,7 +40,10 @@ def get_splitter_for_language(file_extension):
         )
 
 
-def writeout_chunks():
+def writeout_chunks(record, uuid):
+    with open(f"./working/{}/temp.json", 'w') as f:
+        json.dumps(f)
+    
     
 
 def load_documents(args):
