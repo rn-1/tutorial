@@ -29,6 +29,11 @@ type repoSession struct {
 // Global Variables
 var active_repos []repoSessions // this needs some kind of threading or something
 
+func remove(s []int, i int) []int {
+    s[i] = s[len(s)-1]
+    return s[:len(s)-1]
+}
+
 func queryRepo(w http.ResponseWriter, r *http.Request) {
 	// TODO
 	// we'll write text in
@@ -37,8 +42,12 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 func cleanUpRepo(token string) {
 	// now we will do all of this via the tokens as opposed to the string names
-
-	for 
+	os.RemoveAll(fmt.Sprintf("./working/%s", token))
+	for index, session := range active_repos {
+		if session.token == token {
+			remove()
+		}
+	}
 }
 
 func cloneGithub(url string) (uuid string) {
