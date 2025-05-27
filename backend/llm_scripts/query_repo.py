@@ -3,7 +3,9 @@ import langchain
 from langchain.document_loaders import DirectoryLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
-from 
+from langchain.text_splitter import Language
+
+import os
 
 import argparse 
 import json
@@ -41,11 +43,10 @@ def get_splitter_for_language(file_extension):
 
 
 def writeout_chunks(record, uuid):
-    with open(f"./working/{}/temp.json", 'w') as f:
-        json.dumps(f)
+    with open(f"./working/{uuid}/temp.json", 'w') as f:
+        json.dump(record, f, indent=4)
     
     
-
 def load_documents(args):
     loader = DirectoryLoader(args.workingdir)
     loader = DirectoryLoader(
@@ -66,7 +67,6 @@ def load_documents(args):
     return chunks
     
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("workingdir", type = str, required = True)
@@ -76,8 +76,7 @@ def main():
 
     print(chunks)
     data = []
-    for id in range(len(chunks))
-        data.append({"id":id, "text":chunk.page_content, "meta_data":chunk.metadata})
+    for id in range(len(chunks)):
+        data.append({"id":id, "text":chunks[id].page_content, "meta_data":chunks[id].metadata}) # TODO metadata is weird in its own way, how to handle?
 
-    with open(f'{args.workingdir}.json', 'w') as file: # because the workingdir and uuid are the same this works out.
-        json.dump(data, file, indent=4)
+    writeout_chunks(data, args.workingdir)

@@ -13,13 +13,14 @@ import (
 	"github.com/pinecone-io/go-pinecone/v3/pinecone"
 	"gopkg.in/src-d/go-git.v4"
 	"os"
+	"github.com/google/uuid"
 )
 
 // ROUTES
 //
 //	There should probably be a serverside component for chatbot respones. also throbbers are needed
 
-type repoSessions struct {
+type repoSession struct {
 	url   string
 	token string
 	// maybe some other characteristics? we'll see as we need.
@@ -40,7 +41,7 @@ func cleanUpRepo(token string) {
 	for 
 }
 
-func cloneGithub(url string) (status int) {
+func cloneGithub(url string) (uuid string) {
 
 	log.Println("cloning " + url)
 
@@ -54,14 +55,17 @@ func cloneGithub(url string) (status int) {
 
 	_, err := git.PlainClone("./working/", true, cloneOptions)
 
-	active_repos = append(active_repos, url) // we can parse the url later
+	token := Must(uuid.NewRandom())
+	
+	session = repoSession{url: url, token: token}
+	active_repos = append(active_repos, session) // we can parse the url later 
 
 	if err != nil {
 		print("[ERR] FAILED TO CLONE: ", url)
 		return -1
 	}
 
-	return 0
+	return string(token)
 
 }
 
@@ -88,27 +92,71 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 	print(url)
 
-	status := cloneGithub(string(url))
-	if status == -1 {
-		log.Fatalf("Couldn't clone github repository")
-	}
+	token := cloneGithub(string(url))
 
 	// upsert to pinecone db
-	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "INDEX_HOST", Namespace: string(url)})
+	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "https://debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: string(token)})
 	if err != nil {
 		log.Fatalf("Failed to create IndexConnection for Host: %v", err)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+		w.WriteHeader(http.Status) // aw yep
+		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
 	}
 
-	records := chunk_files(url)
+	chunks := chunk_files(token)
+
+	records := *pinecone.IntegratedRecordsFromMap(chunks, pinecone.IntegratedRecordParams{
+			Namespace: string(token)
+		}
+	)
+
+
+	// upsert the records to the index
+	if err := idxConnection.Upsert(ctx, records); err != nil {
+		log.Fatalf("Failed to upsert records: %v", err)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+		w.WriteHeader(http.Status) // aw yep
+		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
+		return
+	} 
 
 	// etc
+	w.WriteHeader(http.StatusOK) // aw yep
+	response := map[string]string{
+		"status": "success",
+		"token":  token,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+	log.Printf("Successfully cloned and indexed repository: %s with token: %s", url, token)
+
+	// TODO run the model on the chunks.
+
+	return
 
 }
 
-func chunk_files(uuid string) {
-	cmd := exec.Command("python3", fmt.sprintf("../llm_scripts/queryRepo.py --workingdir "))
+func chunk_files(uuid string) (chunks map[string]string{}) {
+	cmd := exec.Command("python3", fmt.sprintf("../llm_scripts/queryRepo.py --workingdir %s", uuid))
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("Failed to run chunking script: %v", err)
+		return map[string]string{}
+	}
 	// this creates a json with the uuid
-	os.open(fmt.sprintf)
+	defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid))
+	file, err := os.Open(fmt.Sprintf("./working/%s/temp.json", uuid))
+	if err != nil {
+		log.Fatalf("Failed to open temp.json: %v", err)
+		return map[string]string{}
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&chunks); err != nil {
+		log.Fatalf("Failed to decode temp.json: %v", err)
+		return map[string]string{}
+	}
+	return chunks	
 }
 
 func main() {
