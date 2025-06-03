@@ -109,6 +109,7 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 			Namespace: string(token)
 		}
 	)
+	println("Records: ", records)
 
 
 	// upsert the records to the index
@@ -118,7 +119,7 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.Status) // aw yep
 		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
 		return
-	} 
+	} // check what the fuck is inside the response once we do this. i would like json
 
 	// etc
 	w.WriteHeader(http.StatusOK) // aw yep
