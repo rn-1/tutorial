@@ -77,6 +77,8 @@ def main():
     print(chunks)
     data = []
     for id in range(len(chunks)):
-        data.append({"id":id, "text":chunks[id].page_content, "meta_data":chunks[id].metadata}) # TODO metadata is weird in its own way, how to handle?
+        filename = chunks[id].metadata['source']
+        data.append({"id": filename, "text":chunks[id].page_content}) # TODO metadata is weird in its own way, how to handle?
 
     writeout_chunks(data, args.workingdir)
+    print("[INGEST] ingested documents for session", args.workingdir)

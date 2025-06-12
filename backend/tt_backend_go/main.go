@@ -4,16 +4,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 	"github.com/pinecone-io/go-pinecone/v3/pinecone"
 	"gopkg.in/src-d/go-git.v4"
-	"os"
-	"github.com/google/uuid"
 )
 
 // ROUTES
@@ -24,57 +28,91 @@ type repoSession struct {
 	url   string
 	token string
 	// maybe some other characteristics? we'll see as we need.
+	conversation string
 }
 
 // Global Variables
-var active_repos []repoSessions // this needs some kind of threading or something
+var active_repos []repoSession // this needs some kind of threading or something
 
 func remove(s []int, i int) []int {
-    s[i] = s[len(s)-1]
-    return s[:len(s)-1]
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
 }
 
 func queryRepo(w http.ResponseWriter, r *http.Request) {
 	// TODO
 	// we'll write text in
 	// we should give them a cookie
+
+	f, err := os.Create("vectors.json")
+	if err != nil {
+		panic(err)
+	}
+
+	output := []byte("hello!")
+	f.Write(output)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	// Convert the body to a string
+	text := string(body)
+
+	// Now you can use the 'text' variable as needed
+	fmt.Println("Received text:", text)
+
+	// query the pineconedb
+
+	// if err := idxConnection.Upsert(ctx, records); err != nil {
+	// 	log.Fatalf("Failed to upsert records: %v", err)
+	// 	w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+	// 	w.WriteHeader(http.Status)                                  // aw yep
+	// 	w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
+	// 	return
+	// }
+
+	// // now we have the index connection, we need to determine the uuid for this conversation no?
+
+	// command = exec.Command("python3", fmt.Sprintf("../llm_scripts/run_llm.py --vectorfile %s", filename))
 }
 
 func cleanUpRepo(token string) {
 	// now we will do all of this via the tokens as opposed to the string names
 	os.RemoveAll(fmt.Sprintf("./working/%s", token))
 	for index, session := range active_repos {
+		index = index
 		if session.token == token {
-			remove()
+			// remove()
+			log.Println("hihihi")
 		}
 	}
 }
 
-func cloneGithub(url string) (uuid string) {
+func cloneGithub(url string) (uid string) {
 
 	log.Println("cloning " + url)
 
 	cloneOptions := &git.CloneOptions{
-		URL:           url,
-		ReferenceName: git.ReferenceName("refs/heads/main"), // TODO
-		SingleBranch:  true,
-		Depth:         1,
-		Progress:      nil,
+		URL: url,
 	}
 
-	_, err := git.PlainClone("./working/", true, cloneOptions)
+	_, err := git.PlainClone(fmt.Sprintf("./working/%s", uid), true, cloneOptions)
 
-	token := Must(uuid.NewRandom())
-	
-	session = repoSession{url: url, token: token}
-	active_repos = append(active_repos, session) // we can parse the url later 
+	token := uuid.Must(uuid.NewRandom())
+	idtoken := fmt.Sprintf("%x", token)
+
+	session := repoSession{url: url, token: idtoken}
+	active_repos = append(active_repos, session) // we can parse the url later
 
 	if err != nil {
 		print("[ERR] FAILED TO CLONE: ", url)
-		return -1
+		return ""
 	}
 
-	return string(token)
+	return idtoken
 
 }
 
@@ -108,24 +146,22 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatalf("Failed to create IndexConnection for Host: %v", err)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-		w.WriteHeader(http.Status) // aw yep
+		w.WriteHeader(http.StatusInternalServerError)               // aw yep
 		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
 	}
 
 	chunks := chunk_files(token)
 
 	records := *pinecone.IntegratedRecordsFromMap(chunks, pinecone.IntegratedRecordParams{
-			Namespace: string(token)
-		}
-	)
+		Namespace: token,
+	})
 	println("Records: ", records)
-
 
 	// upsert the records to the index
 	if err := idxConnection.Upsert(ctx, records); err != nil {
 		log.Fatalf("Failed to upsert records: %v", err)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-		w.WriteHeader(http.Status) // aw yep
+		w.WriteHeader(http.Status)                                  // aw yep
 		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
 		return
 	} // check what the fuck is inside the response once we do this. i would like json
@@ -146,14 +182,14 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func chunk_files(uuid string) (chunks map[string]string{}) {
-	cmd := exec.Command("python3", fmt.sprintf("../llm_scripts/queryRepo.py --workingdir %s", uuid))
+func chunk_files(uuid string) (chunks map[string]string) {
+	cmd := exec.Command("python3", fmt.Sprintf("../llm_scripts/queryRepo.py --workingdir %s", uuid))
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Failed to run chunking script: %v", err)
 		return map[string]string{}
 	}
 	// this creates a json with the uuid
-	defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid))
+	defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid)) // don't get rid of it yet
 	file, err := os.Open(fmt.Sprintf("./working/%s/temp.json", uuid))
 	if err != nil {
 		log.Fatalf("Failed to open temp.json: %v", err)
@@ -166,7 +202,7 @@ func chunk_files(uuid string) (chunks map[string]string{}) {
 		log.Fatalf("Failed to decode temp.json: %v", err)
 		return map[string]string{}
 	}
-	return chunks	
+	return chunks
 }
 
 func main() {

@@ -12,8 +12,6 @@ const Main = () => {
 
     
     async function extractGithub(){
-
-
         try{
             let url = document.getElementById("github_url").value.trim();
             if(url === ""){
@@ -33,6 +31,12 @@ const Main = () => {
         } catch(e){
             console.log(`failed to fetch: ${e}`);
         }
+        // response is a json with status and a token
+        resp = JSON.parse(resp)
+        token = resp.token
+
+        localStorage.setItem("sessionid", token) // yay!
+        console.log("created session with uuid ",token)
     }
 
     return (
