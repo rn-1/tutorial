@@ -98,17 +98,18 @@ func cloneGithub(url string) (uid string) {
 	cloneOptions := &git.CloneOptions{
 		URL: url,
 	}
-
-	_, err := git.PlainClone(fmt.Sprintf("./working/%s", uid), true, cloneOptions)
-
 	token := uuid.Must(uuid.NewRandom())
 	idtoken := fmt.Sprintf("%x", token)
+
+	log.Println(fmt.Sprintf("cloning to directory ./working/%s/", idtoken))
+
+	_, err := git.PlainClone(fmt.Sprintf("./working/%s/", idtoken), false, cloneOptions)
 
 	session := repoSession{url: url, token: idtoken}
 	active_repos = append(active_repos, session) // we can parse the url later
 
 	if err != nil {
-		print("[ERR] FAILED TO CLONE: ", url)
+		log.Fatalf("[ERR] FAILED TO CLONE: ", url)
 		return ""
 	}
 
@@ -118,7 +119,7 @@ func cloneGithub(url string) (uid string) {
 
 func initPineconeClient() (client *pinecone.Client) {
 	client, err := pinecone.NewClient(pinecone.NewClientParams{
-		ApiKey: "YOUR_API_KEY",
+		ApiKey: "pcsk_4LZnij_JbQL6KR82nhsGvnLk1PjzTwH91cMUEWwR7SpvTWNauPzGkoGomiex8rFqysZ22Z",
 	})
 	if err != nil {
 		log.Fatalf("Failed to create Client: %v", err)
@@ -133,11 +134,14 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	var url []byte // todo test urls and whatnot
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
 
-	r.Body.Read(url) // should work I hope.
-
-	print(url)
+	url := string(body)
+	log.Print("url: " + url)
 
 	token := cloneGithub(string(url))
 
@@ -152,16 +156,21 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 	chunks := chunk_files(token)
 
-	records := *pinecone.IntegratedRecordsFromMap(chunks, pinecone.IntegratedRecordParams{
-		Namespace: token,
-	})
+	var records []*pinecone.IntegratedRecord
+
+	for id, text := range chunks {
+		records = append(records, &pinecone.IntegratedRecord{
+			"_id":        id,
+			"chunk_text": text,
+		})
+	}
 	println("Records: ", records)
 
 	// upsert the records to the index
-	if err := idxConnection.Upsert(ctx, records); err != nil {
+	if err := idxConnection.UpsertRecords(ctx, records); err != nil {
 		log.Fatalf("Failed to upsert records: %v", err)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-		w.WriteHeader(http.Status)                                  // aw yep
+		w.WriteHeader(http.StatusInternalServerError)               // aw yep
 		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
 		return
 	} // check what the fuck is inside the response once we do this. i would like json
@@ -183,7 +192,8 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 }
 
 func chunk_files(uuid string) (chunks map[string]string) {
-	cmd := exec.Command("python3", fmt.Sprintf("../llm_scripts/queryRepo.py --workingdir %s", uuid))
+	// there's no temp.json?
+	cmd := exec.Command("python3", fmt.Sprintf("../llm_scripts/query_repo.py --workingdir %s", "./working/"+uuid+"/"))
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Failed to run chunking script: %v", err)
 		return map[string]string{}
@@ -207,7 +217,10 @@ func chunk_files(uuid string) (chunks map[string]string) {
 
 func main() {
 
-	ctx := context.Background()
+	// ctx := context.Background()
+
+	pineconeClient = initPineconeClient()
+
 	if pineconeClient == nil {
 		log.Fatalf("Failed to initialze pinecone client, shutting down")
 		return
@@ -240,8 +253,8 @@ func main() {
 	}) // TODO get rid off this later.
 
 	// declaring our routs
-	r.Get("/initialExtract", initialExtraction)
+	r.Post("/initialExtract", initialExtraction)
 	r.Post("/queryRepo", queryRepo)
 
-	http.ListenAndServe(":3000", r)
+	http.ListenAndServe(":8080", r)
 }

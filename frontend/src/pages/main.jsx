@@ -4,6 +4,7 @@ import ChatbotInterface from "../widgets/chatbot";
 import Appbar from "../widgets/Appbar";
 import '../output.css'
 import React from "react";
+import { useState } from "react";
 import { useRef } from 'react';
 
 // holy SHIT this needs a lot of help
@@ -18,25 +19,27 @@ const Main = () => {
                 console.log("empty repo link, ignore")
                 return;
             }
-            const response = await fetch("http://localhost:8081/extract", {
+            const response = await fetch("http://localhost:8080/initialExtract", {
                     method: "POST", 
                     mode:"cors", 
-                    body: JSON.stringify({giturl: url}),
+                    body: url,
                     headers: {
                         'Content-Type': 'application/json'
                     }
                 }
             ).then(resp => resp.text());
+
+            let resp = JSON.parse(response)
+            let token = resp.token
+
+            localStorage.setItem("sessionid", token) // yay!
+            console.log("created session with uuid ",token)
+
             console.log(response);
         } catch(e){
             console.log(`failed to fetch: ${e}`);
         }
         // response is a json with status and a token
-        resp = JSON.parse(resp)
-        token = resp.token
-
-        localStorage.setItem("sessionid", token) // yay!
-        console.log("created session with uuid ",token)
     }
 
     return (
