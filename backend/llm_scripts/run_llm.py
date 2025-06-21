@@ -19,7 +19,7 @@ def main():
     tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-xl")
     model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_map="auto")
 
-    # what format can I use for the vector file? maybe I load in as a json and parse back.
+    # what format can I use for the vector file? maybe I load in as a json and parse back. honestly yeah 
 
     with open("vectors.json", 'r') as f:
         json = json
