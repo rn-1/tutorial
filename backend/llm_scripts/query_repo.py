@@ -1,6 +1,6 @@
 import langchain
 
-from langchain.document_loaders import DirectoryLoader, TextLoader
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain.text_splitter import Language
@@ -48,28 +48,31 @@ def writeout_chunks(record, uuid):
     
     
 def load_documents(args):
-    loader = DirectoryLoader(args.workingdir)
+    print(f"Attempting to chunk files from directory \'{args.workingdir}\'")
     loader = DirectoryLoader(
-        "path/to/code/directory",
-        glob="**/*.py",  # or *.js, *.java, etc.
+        args.workingdir,
+        glob="**/*.*",  # or *.js, *.java, etc.
         loader_cls=TextLoader,
         loader_kwargs={'encoding': 'utf8'}
-    )
+    ) # behen ki lund
     documents = loader.load()
     
     chunks = []
     for doc in documents:
-        file_extension = os.path.splitext(doc.metadata['source'])[1]
-        splitter = get_splitter_for_language(file_extension)
-        doc_chunks = splitter.split_documents([doc])
-        chunks.extend(doc_chunks)
+        try:
+            file_extension = os.path.splitext(doc.metadata['source'])[1]
+            splitter = get_splitter_for_language(file_extension)
+            doc_chunks = splitter.split_documents([doc])
+            chunks.extend(doc_chunks)
+        except:
+            print(f"Could not parse file {doc.metadata['source']}")
 
     return chunks
     
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("workingdir", type = str, required = True)
+    parser.add_argument("--workingdir", type = str) # TODO required
     
     args = parser.parse_args()
     chunks = load_documents(args)
@@ -82,3 +85,7 @@ def main():
 
     writeout_chunks(data, args.workingdir)
     print("[INGEST] ingested documents for session", args.workingdir)
+
+
+if __name__ == "__main__":
+    main()

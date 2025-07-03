@@ -193,7 +193,7 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 func chunk_files(uuid string) (chunks map[string]string) {
 	// there's no temp.json?
-	cmd := exec.Command("python3", fmt.Sprintf("../llm_scripts/query_repo.py --workingdir %s", "./working/"+uuid+"/"))
+	cmd := exec.Command("sh", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Failed to run chunking script: %v", err)
 		return map[string]string{}
@@ -220,6 +220,8 @@ func main() {
 	// ctx := context.Background()
 
 	pineconeClient = initPineconeClient()
+
+	log.Println("Starting server on port 8000...")
 
 	if pineconeClient == nil {
 		log.Fatalf("Failed to initialze pinecone client, shutting down")
