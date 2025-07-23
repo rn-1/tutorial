@@ -24,6 +24,11 @@ import (
 //
 //	There should probably be a serverside component for chatbot respones. also throbbers are needed
 
+func slice_remove(s []repoSession, i int) []repoSession {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
+}
+
 type repoSession struct {
 	url   string
 	token string
@@ -33,11 +38,6 @@ type repoSession struct {
 
 // Global Variables
 var active_repos []repoSession // this needs some kind of threading or something
-
-func remove(s []int, i int) []int {
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
-}
 
 func queryRepo(w http.ResponseWriter, r *http.Request) {
 	// TODO
@@ -83,12 +83,11 @@ func cleanUpRepo(token string) {
 	// now we will do all of this via the tokens as opposed to the string names
 	os.RemoveAll(fmt.Sprintf("./working/%s", token))
 	for index, session := range active_repos {
-		index = index
 		if session.token == token {
-			// remove()
-			log.Println("hihihi")
+			active_repos = slice_remove(active_repos, index)
 		}
 	}
+	log.Printf("Cleaned session with id %s", token)
 }
 
 func cloneGithub(url string) (uid string) {
@@ -118,8 +117,9 @@ func cloneGithub(url string) (uid string) {
 }
 
 func initPineconeClient() (client *pinecone.Client) {
+	apiKey := "pcsk_4LZnij_JbQL6KR82nhsGvnLk1PjzTwH91cMUEWwR7SpvTWNauPzGkoGomiex8rFqysZ22Z" // TODO remove this plssss
 	client, err := pinecone.NewClient(pinecone.NewClientParams{
-		ApiKey: "pcsk_4LZnij_JbQL6KR82nhsGvnLk1PjzTwH91cMUEWwR7SpvTWNauPzGkoGomiex8rFqysZ22Z",
+		ApiKey: apiKey,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create Client: %v", err)
@@ -146,7 +146,7 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	token := cloneGithub(string(url))
 
 	// upsert to pinecone db
-	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "https://debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: string(token)})
+	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: token})
 	if err != nil {
 		log.Fatalf("Failed to create IndexConnection for Host: %v", err)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
@@ -158,22 +158,32 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 	var records []*pinecone.IntegratedRecord
 
-	for id, text := range chunks {
-		records = append(records, &pinecone.IntegratedRecord{
-			"_id":        id,
-			"chunk_text": text,
-		})
+	for _, text := range chunks {
+		// log.Printf("id is %s", text["id"])
+		// log.Printf("text is %s", text["text"])
+		record := &pinecone.IntegratedRecord{
+			"_id":        text["id"],
+			"chunk_text": text["text"],
+		}
+
+		// fmt.Println("Record chunk_text:", record["chunk_text"])
+		records = append(records, record)
 	}
-	println("Records: ", records)
+
+	log.Printf("Records to upsert: %d", len(records))
+	if len(chunks) == 0 {
+		log.Print("Warning: No chunks generated")
+	}
 
 	// upsert the records to the index
-	if err := idxConnection.UpsertRecords(ctx, records); err != nil {
+	err = idxConnection.UpsertRecords(ctx, records)
+	if err != nil {
 		log.Fatalf("Failed to upsert records: %v", err)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
 		w.WriteHeader(http.StatusInternalServerError)               // aw yep
 		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
 		return
-	} // check what the fuck is inside the response once we do this. i would like json
+	} // check what the fuck is inside the response once we do this. i would like json.
 
 	// etc
 	w.WriteHeader(http.StatusOK) // aw yep
@@ -191,27 +201,28 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func chunk_files(uuid string) (chunks map[string]string) {
+func chunk_files(uuid string) (chunks []map[string]string) {
 	// there's no temp.json?
 	cmd := exec.Command("sh", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Failed to run chunking script: %v", err)
-		return map[string]string{}
+		return []map[string]string{}
 	}
 	// this creates a json with the uuid
-	defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid)) // don't get rid of it yet
+	// defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid)) // don't get rid of it yet
 	file, err := os.Open(fmt.Sprintf("./working/%s/temp.json", uuid))
 	if err != nil {
 		log.Fatalf("Failed to open temp.json: %v", err)
-		return map[string]string{}
+		return []map[string]string{}
 	}
 	defer file.Close()
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&chunks); err != nil {
 		log.Fatalf("Failed to decode temp.json: %v", err)
-		return map[string]string{}
+		return []map[string]string{}
 	}
+	// log.Printf("%+v", chunks)
 	return chunks
 }
 

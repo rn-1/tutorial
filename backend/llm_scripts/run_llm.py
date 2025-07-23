@@ -1,4 +1,3 @@
-import LangChain
 # requires accelerate to be installed.
 import torch
 import os
@@ -8,22 +7,12 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 import argparse
 
 
+# Functions for running the tokenizers and model.
 
+def tokenize_chunk(text):
+    tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-base") # TODO conver to GPU
+    embeds = tokenizer(text, return_tensors="pt")
+    print(embeds)
+    # Any other cleanup we need to do?
 
-def main():
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--vectorfile", required = True, tyep = str)
-
-    tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-xl")
-    model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_map="auto")
-
-    # what format can I use for the vector file? maybe I load in as a json and parse back. honestly yeah 
-
-    with open("vectors.json", 'r') as f:
-        json = json
-
-
-if __name__ == "__main__":
-    main()
+    return embeds

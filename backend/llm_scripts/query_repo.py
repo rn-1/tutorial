@@ -5,6 +5,8 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain.text_splitter import Language
 
+from run_llm import tokenize_chunk
+
 import os
 
 import argparse 
@@ -26,7 +28,7 @@ def get_splitter_for_language(file_extension):
         '.swift': Language.SWIFT,
         '.kt': Language.KOTLIN,
         '.rs': Language.RUST,
-    }
+    } # this language splitter might be the reason it isn't working.
     
     if file_extension in language_map:
         return RecursiveCharacterTextSplitter.from_language(
@@ -51,10 +53,10 @@ def load_documents(args):
     print(f"Attempting to chunk files from directory \'{args.workingdir}\'")
     loader = DirectoryLoader(
         args.workingdir,
-        glob="**/*.*",  # or *.js, *.java, etc.
+        glob="**/*.[!o]",  # or *.js, *.java, etc.
         loader_cls=TextLoader,
         loader_kwargs={'encoding': 'utf8'}
-    ) # behen ki lund
+    )
     documents = loader.load()
     
     chunks = []
@@ -71,6 +73,8 @@ def load_documents(args):
     
 
 def main():
+
+    # ingestion is and all, but yeah 
     parser = argparse.ArgumentParser()
     parser.add_argument("--workingdir", type = str) # TODO required
     
@@ -81,9 +85,9 @@ def main():
     data = []
     for id in range(len(chunks)):
         filename = chunks[id].metadata['source']
-        data.append({"id": filename, "text":chunks[id].page_content}) # TODO metadata is weird in its own way, how to handle?
+        data.append({"id": filename.replace(args.workingdir, ''),"values":tokenize_chunk(chunks[id].page_content),"text":chunks[id].page_content}) # TODO metadata is weird in its own way, how to handle?
 
-    writeout_chunks(data, args.workingdir)
+    writeout_chunks(data, args.workingdir.replace("./working/",''))
     print("[INGEST] ingested documents for session", args.workingdir)
 
 
