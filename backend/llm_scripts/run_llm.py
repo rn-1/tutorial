@@ -8,11 +8,11 @@ import argparse
 
 
 # Functions for running the tokenizers and model.
+#fuck man idk
 
 def tokenize_chunk(text):
     tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-base") # TODO conver to GPU
     embeds = tokenizer(text, return_tensors="pt")
-    print(embeds)
     # Any other cleanup we need to do?
 
     return embeds

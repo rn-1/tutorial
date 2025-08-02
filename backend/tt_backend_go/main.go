@@ -154,6 +154,7 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
 	}
 
+	log.Printf("Chunking files...")
 	chunks := chunk_files(token)
 
 	var records []*pinecone.IntegratedRecord

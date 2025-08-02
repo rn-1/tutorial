@@ -81,11 +81,11 @@ def main():
     args = parser.parse_args()
     chunks = load_documents(args)
 
-    print(chunks)
+    # print(chunks)
     data = []
     for id in range(len(chunks)):
         filename = chunks[id].metadata['source']
-        data.append({"id": filename.replace(args.workingdir, ''),"values":tokenize_chunk(chunks[id].page_content),"text":chunks[id].page_content}) # TODO metadata is weird in its own way, how to handle?
+        data.append({"id": filename.replace(args.workingdir, ''),"text":chunks[id].page_content}) # TODO metadata is weird in its own way, how to handle?
 
     writeout_chunks(data, args.workingdir.replace("./working/",''))
     print("[INGEST] ingested documents for session", args.workingdir)
