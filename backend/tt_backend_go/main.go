@@ -44,13 +44,12 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 	// we'll write text in
 	// we should give them a cookie
 
-	f, err := os.Create("vectors.json")
+	ctx := context.Background()
+
+	_, err := os.Create("vectors.json")
 	if err != nil {
 		panic(err)
 	}
-
-	output := []byte("hello!")
-	f.Write(output)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -59,24 +58,42 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert the body to a string
-	text := string(body)
+	text := string(body) // TODO we will also receive a token
 
 	// Now you can use the 'text' variable as needed
 	fmt.Println("Received text:", text)
 
 	// query the pineconedb
 
-	// if err := idxConnection.Upsert(ctx, records); err != nil {
-	// 	log.Fatalf("Failed to upsert records: %v", err)
-	// 	w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-	// 	w.WriteHeader(http.Status)                                  // aw yep
-	// 	w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
-	// 	return
-	// }
+	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: "hi"})
+	if err != nil {
+		log.Fatalf("Failed to create IndexConnection for Host: %v", err)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+		w.WriteHeader(http.StatusInternalServerError)               // aw yep
+		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
+	}
+
+	res, err := idxConnection.SearchRecords(ctx, &pinecone.SearchRecordsRequest{
+		Query: pinecone.SearchRecordsQuery{
+			TopK: 5,
+			Inputs: &map[string]interface{}{
+				"text": text,
+			},
+		},
+	})
+
+	log.Printf("records: %+v", res)
+
+	// write these out to the tempfile, truncate the tempfile
+	// dir := fmt.Sprintf("./working/%s/temp.json", uuid)
+	file, _ := os.OpenFile("temp.json", os.O_CREATE, os.ModePerm)
+	defer file.Close()
+	encoder := json.NewEncoder(file)
+	encoder.Encode(res)
 
 	// // now we have the index connection, we need to determine the uuid for this conversation no?
 
-	// command = exec.Command("python3", fmt.Sprintf("../llm_scripts/run_llm.py --vectorfile %s", filename))
+	// command = exec.Command("python3", fmt.Sprintf("../llm_scripts/run_llm.py --workingdir %s", filename))
 }
 
 func cleanUpRepo(token string) {
@@ -163,8 +180,8 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 		// log.Printf("id is %s", text["id"])
 		// log.Printf("text is %s", text["text"])
 		record := &pinecone.IntegratedRecord{
-			"_id":        text["id"],
-			"chunk_text": text["text"],
+			"id":   text["id"],
+			"text": text["text"],
 		}
 
 		// fmt.Println("Record chunk_text:", record["chunk_text"])
@@ -196,10 +213,9 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 	log.Printf("Successfully cloned and indexed repository: %s with token: %s", url, token)
 
-	// TODO run the model on the chunks.
+	// model will run when this happens.
 
 	return
-
 }
 
 func chunk_files(uuid string) (chunks []map[string]string) {

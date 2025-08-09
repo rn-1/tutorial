@@ -1,11 +1,11 @@
 import langchain
 
+from run_llm import initial_synopsis, converse
+
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain.text_splitter import Language
-
-from run_llm import tokenize_chunk
 
 import os
 
@@ -82,13 +82,19 @@ def main():
     chunks = load_documents(args)
 
     # print(chunks)
+    print(args.workingdir)
+
     data = []
     for id in range(len(chunks)):
         filename = chunks[id].metadata['source']
-        data.append({"id": filename.replace(args.workingdir, ''),"text":chunks[id].page_content}) # TODO metadata is weird in its own way, how to handle?
+        data.append({"id": filename.split("/")[-1],"text":chunks[id].page_content}) # TODO metadata is weird in its own way, how to handle?
 
-    writeout_chunks(data, args.workingdir.replace("./working/",''))
-    print("[INGEST] ingested documents for session", args.workingdir)
+    uuid = args.workingdir.replace("./working/",'')
+    writeout_chunks(data, uuid)
+    convo, output = initial_synopsis(args)
+    with open(f"./working/{uuid}/convo.json", 'w') as f:
+        json.dump(convo, f)
+    print(output)
 
 
 if __name__ == "__main__":
