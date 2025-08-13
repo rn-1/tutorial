@@ -1,3 +1,5 @@
+# BIG TODO: put a rest api between these python scripts and the go server.
+
 # requires accelerate to be installed.
 import torch
 import os
@@ -26,16 +28,13 @@ def parse_messages(workingdir): # lol?
         return convo
 
 def converse(args):
-    messages = [
-        {"role":"system","content":"You are an AI assistant that is an expert in reading and understanding code. Your task is to answer questions, asked by the user, about a specified code base based on the content of its files. Give a short synopsis of the following: \n\t1: What is this code meant to do? \n\t2:How does it accomplish this? Refer to specific sections of code or practices used in the codebase \n\t3: What are the basic things one must know to be able to use the codebase effectively in their own projects?\n Please refer to the code that is given as many times as is needed, and provide as much detail as you feel is needed. You may further need to ask the user what specific functionality they want out of the codebase, and adjust your later responses accordingly."}
-    ]
-    messages.append(parse_messages(args.workingdir))
+    messages = parse_messages(args.workingdir)
     chunks = parse_chunks(args.workingdir) # ok cool.
     
     output = call_llm(messages, chunks)
-    messages += {"role":"assistant","content":output}
+    messages += [{"role":"assistant","content":output}]
     
-    return output, messages
+    return messages, output
 
 def initial_synopsis(args):
     messages = [
@@ -46,19 +45,19 @@ def initial_synopsis(args):
 
     output = call_llm(messages, retrieved)
 
-    messages += {"role":"assistant","content":output}
+    messages += [{"role":"assistant","content":output}]
     return messages, output
 
 def call_llm(convo, chunks):
     model_name = "Qwen/Qwen3-4B-Instruct-2507"
 
-    convo.append({"role":"system","content":chunks})
+    convo.append({"role": "user", "content": chunks})
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float32,
-        device_map="cpu"
+        torch_dtype="auto",
+        device_map="auto"
     )
 
     text = tokenizer.apply_chat_template(
@@ -97,7 +96,7 @@ def main(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", type = str, required=True)
+    parser.add_argument("--mode", type = str, default = "converse")
     parser.add_argument("--workingdir", type = str, required = True)
 
     args = parser.parse_args()

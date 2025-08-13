@@ -50,7 +50,7 @@ def writeout_chunks(record, uuid):
     
     
 def load_documents(args):
-    print(f"Attempting to chunk files from directory \'{args.workingdir}\'")
+    # print(f"Attempting to chunk files from directory \'{args.workingdir}\'")
     loader = DirectoryLoader(
         args.workingdir,
         glob="**/*.[!o]",  # or *.js, *.java, etc.
@@ -72,17 +72,14 @@ def load_documents(args):
     return chunks
     
 
-def main():
+def initial(args):
 
     # ingestion is and all, but yeah 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--workingdir", type = str) # TODO required
     
-    args = parser.parse_args()
     chunks = load_documents(args)
 
     # print(chunks)
-    print(args.workingdir)
+    # print(args.workingdir)
 
     data = []
     for id in range(len(chunks)):
@@ -94,7 +91,25 @@ def main():
     convo, output = initial_synopsis(args)
     with open(f"./working/{uuid}/convo.json", 'w') as f:
         json.dump(convo, f)
-    print(output)
+    
+    with open(f"./working/{uuid}/output.txt", 'w') as f:
+        f.write(output)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--workingdir", type = str) # TODO required
+    parser.add_argument("--mode", type = str, default = "initial") # TODO required
+    
+    args = parser.parse_args()
+
+    if args.mode == "initial":
+        initial(args)
+    elif args.mode == "converse":
+        convo, output = converse(args)
+        with open(f"./working/{args.workingdir}/convo.json", 'w') as f:
+            json.dump(convo, f)
+        with open(f"./working/{args.workingdir}/output.txt", 'w') as f:
+            f.write(output) # aaand done
 
 
 if __name__ == "__main__":

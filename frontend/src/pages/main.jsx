@@ -11,6 +11,7 @@ import { useRef } from 'react';
 
 const Main = () => {
 
+    const [messages, setMessages] = useState([])
     
     async function extractGithub(){
         try{
@@ -29,13 +30,20 @@ const Main = () => {
                 }
             ).then(resp => resp.text());
 
-            let resp = JSON.parse(response)
-            let token = resp.token
+            // console.log(response)
+
+            let sess = JSON.stringify(response)
+            sess = JSON.parse(response)
+            let token = sess.token
 
             localStorage.setItem("sessionid", token) // yay!
             console.log("created session with uuid ",token)
 
-            console.log(response);
+            // console.log(sess.output);
+            if(sess.output){
+                setMessages(messages => [...messages, {id: 0, text:sess.output, isUser: false}]); 
+            }
+
         } catch(e){
             console.log(`failed to fetch: ${e}`);
         }
@@ -49,9 +57,9 @@ const Main = () => {
                 id="body" 
                 className="w-full flex flex-col items-center pt-20 px-4 flex-grow"
             >
-                <Textinput initialVal="" _placeholder="github url to extract from" id="github_url" onsubmit={extractGithub}/>
-                <div className="w-full max-w-4xl h-[70vh] mt-4 rounded-lg">
-                    <ChatbotInterface/>
+                <Textinput initialVal="" _placeholder="http cloning url" id="github_url" onsubmit={extractGithub}/>
+                <div id = "chatbot_area" className="w-full max-w-4xl h-[70vh] mt-4 rounded-lg">
+                    <ChatbotInterface initialMessages={[]} messages={messages} setMessages={setMessages}/>
                 </div>
             </div>
         </div>

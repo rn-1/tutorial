@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import '../output.css'
+import ReactMarkdown from 'react-markdown';
 
-const ChatbotInterface = ({ initialMessages = [] }) => {
-    const [messages, setMessages] = useState(initialMessages);
+
+const ChatbotInterface = ({ initialMessages = [], messages, setMessages}) => {
     const [currentInput, setCurrentInput] = useState('');
     const messagesEndRef = useRef(null);
     
@@ -40,7 +41,18 @@ const ChatbotInterface = ({ initialMessages = [] }) => {
       // This is a placeholder for that functionality
         const test = async () => {
             try{
-                const response = await fetch("http://127.0.0.1:8081/", {method:"GET", mode: "cors"}).then(response => response.text());
+                const sessionId = localStorage.getItem('sessionid');
+                const response = await fetch("http://localhost:8080/queryRepo", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        text: newUserMessage.text,
+                        sessionid: sessionId
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    mode: "cors"
+                });
                 if(!response.ok){
                     console.log("http error");
                 } else{
@@ -76,7 +88,9 @@ const ChatbotInterface = ({ initialMessages = [] }) => {
                         : 'mr-auto bg-gray-600 bg-opacity-50 text-white'
                     }`}
                     >
-                    {message.text}
+                        <ReactMarkdown>
+                            {message.text}
+                        </ReactMarkdown>
                     </div>
                 ))}
                 <div ref={messagesEndRef} />

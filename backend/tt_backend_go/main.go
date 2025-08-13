@@ -33,7 +33,6 @@ type repoSession struct {
 	url   string
 	token string
 	// maybe some other characteristics? we'll see as we need.
-	conversation string
 }
 
 // Global Variables
@@ -46,26 +45,27 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	_, err := os.Create("vectors.json")
-	if err != nil {
-		panic(err)
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
 		return
 	}
 
-	// Convert the body to a string
-	text := string(body) // TODO we will also receive a token
+	var data map[string]string
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	text := data["text"]
+	session := data["sessionid"]
 
 	// Now you can use the 'text' variable as needed
-	fmt.Println("Received text:", text)
+	fmt.Println("Received prompt:", text)
 
 	// query the pineconedb
 
-	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: "hi"})
+	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: session})
 	if err != nil {
 		log.Fatalf("Failed to create IndexConnection for Host: %v", err)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
@@ -75,28 +75,54 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 	res, err := idxConnection.SearchRecords(ctx, &pinecone.SearchRecordsRequest{
 		Query: pinecone.SearchRecordsQuery{
-			TopK: 5,
+			TopK: 40, // there's a lot of chunks
 			Inputs: &map[string]interface{}{
 				"text": text,
 			},
 		},
 	})
+	if err != nil {
+		http.Error(w, "Failed to search records: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	log.Printf("records: %+v", res)
 
 	// write these out to the tempfile, truncate the tempfile
-	// dir := fmt.Sprintf("./working/%s/temp.json", uuid)
-	file, _ := os.OpenFile("temp.json", os.O_CREATE, os.ModePerm)
+	dir := fmt.Sprintf("./working/%s/temp.json", session)
+	file, _ := os.OpenFile(dir, os.O_CREATE, os.ModePerm)
 	defer file.Close()
 	encoder := json.NewEncoder(file)
 	encoder.Encode(res)
 
-	// // now we have the index connection, we need to determine the uuid for this conversation no?
+	command := exec.Command("bash", fmt.Sprintf("../llm_scripts/chat.sh --workingdir ./working/%s", session))
+	command.Run()
 
-	// command = exec.Command("python3", fmt.Sprintf("../llm_scripts/run_llm.py --workingdir %s", filename))
+	path := fmt.Sprintf("./working/%s/output.txt", session)
+
+	f, err := os.Open(path)
+	if err != nil {
+		// whatever
+	}
+	output, err := io.ReadAll(f)
+	if err != nil {
+		log.Fatalf("Failed to read output: %v", err)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+		w.WriteHeader(http.StatusInternalServerError)               // aw yep
+		w.Write([]byte("Failed to read output: " + err.Error()))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]string{
+		"output": string(output),
+	}
+	json.NewEncoder(w).Encode(response)
+	log.Printf("%v", response)
+
 }
 
-func cleanUpRepo(token string) {
+func cleanUpRepo(token string) { // how the fuck do i do this?
 	// now we will do all of this via the tokens as opposed to the string names
 	os.RemoveAll(fmt.Sprintf("./working/%s", token))
 	for index, session := range active_repos {
@@ -162,6 +188,17 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 	token := cloneGithub(string(url))
 
+	// DEBUG
+	// w.Header().Set("Content-Type", "application/json")
+	// response := map[string]string{
+	// 	"token":  token,
+	// 	"output": string(token),
+	// }
+	// json.NewEncoder(w).Encode(response)
+	// log.Printf("leaving early...")
+	// return
+	// DEBUG
+
 	// upsert to pinecone db
 	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: token})
 	if err != nil {
@@ -204,23 +241,41 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	} // check what the fuck is inside the response once we do this. i would like json.
 
 	// etc
-	w.WriteHeader(http.StatusOK) // aw yep
-	response := map[string]string{
-		"status": "success",
-		"token":  token,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	// json.NewEncoder(w).Encode(response)
 	log.Printf("Successfully cloned and indexed repository: %s with token: %s", url, token)
 
-	// model will run when this happens.
+	// model will run when this happens. read out from file
 
-	return
+	path := fmt.Sprintf("./working/%s/output.txt", token)
+
+	f, err := os.Open(path)
+	if err != nil {
+		// whatever
+	}
+	output, err := io.ReadAll(f)
+	if err != nil {
+		log.Fatalf("Failed to read output: %v", err)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+		w.WriteHeader(http.StatusInternalServerError)               // aw yep
+		w.Write([]byte("Failed to read output: " + err.Error()))
+		return
+	}
+
+	log.Println("All is well")
+
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]string{
+		"token":  token,
+		"output": string(output),
+	}
+	json.NewEncoder(w).Encode(response)
+	log.Printf("%v", response)
+
 }
 
 func chunk_files(uuid string) (chunks []map[string]string) {
 	// there's no temp.json?
-	cmd := exec.Command("sh", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
+	cmd := exec.Command("bash", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Failed to run chunking script: %v", err)
 		return []map[string]string{}
@@ -249,7 +304,7 @@ func main() {
 
 	pineconeClient = initPineconeClient()
 
-	log.Println("Starting server on port 8000...")
+	log.Println("Starting server on port 8080...") // TODO port from env var
 
 	if pineconeClient == nil {
 		log.Fatalf("Failed to initialze pinecone client, shutting down")
