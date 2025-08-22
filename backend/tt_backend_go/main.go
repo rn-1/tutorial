@@ -45,8 +45,11 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
+	log.Print("working")
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		log.Print("Error reading request body: ", err)
 		http.Error(w, "Error reading request body", http.StatusBadRequest)
 		return
 	}
@@ -54,6 +57,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 	var data map[string]string
 	err = json.Unmarshal(body, &data)
 	if err != nil {
+		log.Print("Error unmarshalling request body: ", err)
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -95,8 +99,13 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 	encoder := json.NewEncoder(file)
 	encoder.Encode(res)
 
-	command := exec.Command("bash", fmt.Sprintf("../llm_scripts/chat.sh --workingdir ./working/%s", session))
-	command.Run()
+	log.Printf("%s", session)
+
+	command := exec.Command("bash", "../llm_scripts/chat.sh", fmt.Sprintf("./working/%s", session))
+	if err := command.Run(); err != nil {
+		log.Fatalf("Failed to run chat script: %v", err)
+		http.Error(w, "Failed to run chat script: "+err.Error(), http.StatusInternalServerError)
+	}
 
 	path := fmt.Sprintf("./working/%s/output.txt", session)
 

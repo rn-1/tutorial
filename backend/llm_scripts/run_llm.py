@@ -1,15 +1,20 @@
 # BIG TODO: put a rest api between these python scripts and the go server.
 
 # requires accelerate to be installed.
-import torch
 import os
 import json
-from dotenv import load_dotenv # i think i might use llama or something here
-from transformers import AutoTokenizer, AutoModelForCausalLM
 import argparse
-import transformers
+import requests
 
 # Functions for running the tokenizers and model.
+
+def call_api(convo, chunks):
+    resp = requests.post("http://localhost:8000/generate", json={"conversation": convo, "chunks": chunks})
+    if resp.status_code == 200:
+        resp = resp.json()
+        return resp['response']
+    else:
+        raise Exception(f"API call failed with status code {resp.status_code}: {resp.text}")
 
 def parse_chunks(workingdir): # do we need this?
     
@@ -31,7 +36,7 @@ def converse(args):
     messages = parse_messages(args.workingdir)
     chunks = parse_chunks(args.workingdir) # ok cool.
     
-    output = call_llm(messages, chunks)
+    output = call_api(messages, chunks)
     messages += [{"role":"assistant","content":output}]
     
     return messages, output
@@ -43,7 +48,7 @@ def initial_synopsis(args):
     ]
     retrieved = parse_chunks(args.workingdir)
 
-    output = call_llm(messages, retrieved)
+    output = call_api(messages, retrieved)
 
     messages += [{"role":"assistant","content":output}]
     return messages, output

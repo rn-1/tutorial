@@ -13,6 +13,7 @@ import argparse
 import json
 
 
+
 def get_splitter_for_language(file_extension):
     language_map = {
         '.py': Language.PYTHON,
@@ -106,9 +107,9 @@ def main():
         initial(args)
     elif args.mode == "converse":
         convo, output = converse(args)
-        with open(f"./working/{args.workingdir}/convo.json", 'w') as f:
+        with open(f"{args.workingdir}/convo.json", 'w') as f:
             json.dump(convo, f)
-        with open(f"./working/{args.workingdir}/output.txt", 'w') as f:
+        with open(f"{args.workingdir}/output.txt", 'w') as f:
             f.write(output) # aaand done
 
 
