@@ -35,6 +35,12 @@ type repoSession struct {
 	// maybe some other characteristics? we'll see as we need.
 }
 
+func checkError(err error) {
+	if err != nil {
+		panic("fuck")
+	}
+}
+
 // Global Variables
 var active_repos []repoSession // this needs some kind of threading or something
 
@@ -64,8 +70,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 	text := data["text"]
 	session := data["sessionid"]
 
-	// Now you can use the 'text' variable as needed
-	fmt.Println("Received prompt:", text)
+	fmt.Println("Received prompt:", text) // TODO rename text to something more helpful
 
 	// query the pineconedb
 
@@ -94,14 +99,17 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 	// write these out to the tempfile, truncate the tempfile
 	dir := fmt.Sprintf("./working/%s/temp.json", session)
-	file, _ := os.OpenFile(dir, os.O_CREATE, os.ModePerm)
+	file, _ := os.OpenFile(dir, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+
 	defer file.Close()
 	encoder := json.NewEncoder(file)
-	encoder.Encode(res)
+	if err := encoder.Encode(res.Result.Hits); err != nil {
+		log.Printf("failed to write retrieved json")
+	}
 
 	log.Printf("%s", session)
 
-	command := exec.Command("bash", "../llm_scripts/chat.sh", fmt.Sprintf("./working/%s", session))
+	command := exec.Command("bash", "../llm_scripts/chat.sh", fmt.Sprintf("./working/%s", session), text)
 	if err := command.Run(); err != nil {
 		log.Fatalf("Failed to run chat script: %v", err)
 		http.Error(w, "Failed to run chat script: "+err.Error(), http.StatusInternalServerError)
@@ -131,15 +139,29 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func cleanUpRepo(token string) { // how the fuck do i do this?
+func cleanUpRepo(w http.ResponseWriter, r *http.Request) { // how the fuck do i do this?
 	// now we will do all of this via the tokens as opposed to the string names
+
+	//TODO define some generic error functions. Make this simple.
+
+	body, err := io.ReadAll(r.Body)
+	checkError(err)
+
+	var data map[string]string
+	err = json.Unmarshal(body, &data)
+	checkError(err)
+
+	token := data["id"]
+
 	os.RemoveAll(fmt.Sprintf("./working/%s", token))
 	for index, session := range active_repos {
 		if session.token == token {
-			active_repos = slice_remove(active_repos, index)
+			active_repos = slice_remove(active_repos, index) // doesn't matter ig.
 		}
 	}
 	log.Printf("Cleaned session with id %s", token)
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func cloneGithub(url string) (uid string) {
@@ -342,6 +364,7 @@ func main() {
 		w.WriteHeader(405)
 		w.Write([]byte("{\"status\":\"405\"}"))
 	})
+
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Hello World!"))
 	}) // TODO get rid off this later.
@@ -349,6 +372,7 @@ func main() {
 	// declaring our routs
 	r.Post("/initialExtract", initialExtraction)
 	r.Post("/queryRepo", queryRepo)
+	r.Post("/cleanup", cleanUpRepo)
 
 	http.ListenAndServe(":8080", r)
 }

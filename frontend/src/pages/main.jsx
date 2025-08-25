@@ -4,7 +4,7 @@ import ChatbotInterface from "../widgets/chatbot";
 import Appbar from "../widgets/Appbar";
 import '../output.css'
 import React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRef } from 'react';
 
 // holy SHIT this needs a lot of help
@@ -12,6 +12,27 @@ import { useRef } from 'react';
 const Main = () => {
 
     const [messages, setMessages] = useState([])
+
+    useEffect(() => {
+        const cleanupSession = async () => {
+            if(!localStorage["sessionid"]){
+                return
+            } else{
+                //
+                do{ 
+                    var response = await fetch("http://localhost:8080/cleanup",{
+                        method:"POST",
+                        mode:"cors",
+                        body:JSON.stringify({id:localStorage}),
+                        headers:{
+                            'Content-Type':"application/json"
+                        }
+                    }
+                )
+                } while(!response.ok);
+            }
+        }
+    })
     
     async function extractGithub(){
         try{

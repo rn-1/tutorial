@@ -9,7 +9,6 @@ from dotenv import load_dotenv # i think i might use llama or something here
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import argparse
 import transformers
-
 import uvicorn
 
 # TODO
@@ -23,20 +22,27 @@ class Prompt(BaseModel):
 
 def initialize_model():
     global tokenizer, model
+
+
+    # decide offloading stuff for testing
+    # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    
+    
     model_name = "Qwen/Qwen3-4B-Instruct-2507"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-        device_map="auto"
+            model_name,
+            device_map="auto",
+            torch_dtype="auto",
     )
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 def call_llm(convo, chunks):
 
-    convo.append({"role": "user", "content": chunks})
+    converse = convo + [{"role": "user", "content": chunks}]
 
     text = tokenizer.apply_chat_template(
-        convo,
+        converse,
         tokenize=False,
         add_generation_prompt=True,
     )
@@ -56,6 +62,8 @@ def call_llm(convo, chunks):
         index = 0
 
     content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+
+    # content = "debug_output" # TODO undo this
 
     return content
 

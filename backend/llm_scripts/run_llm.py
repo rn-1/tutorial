@@ -22,7 +22,7 @@ def parse_chunks(workingdir): # do we need this?
         chunks = json.load(file)
         assembled = "Here is some relevant information from the codebase:\n\n"
         for chunk in chunks:
-            assembled += f"From file {chunk["id"]}:\n{chunk["text"]}\n"
+            assembled += f"From file {chunk["_id"] if not chunk.get("id", None) else chunk["id"]}:\n{chunk["fields"]["text"] if not chunk.get("text",None) else chunk["text"]}\n"
             
         return assembled
     # we will need to change this later maybe...
@@ -35,7 +35,8 @@ def parse_messages(workingdir): # lol?
 def converse(args):
     messages = parse_messages(args.workingdir)
     chunks = parse_chunks(args.workingdir) # ok cool.
-    
+
+    messages += [{"role":"user","content":args.prompt}]
     output = call_api(messages, chunks)
     messages += [{"role":"assistant","content":output}]
     
@@ -52,42 +53,6 @@ def initial_synopsis(args):
 
     messages += [{"role":"assistant","content":output}]
     return messages, output
-
-def call_llm(convo, chunks):
-    model_name = "Qwen/Qwen3-4B-Instruct-2507"
-
-    convo.append({"role": "user", "content": chunks})
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-        device_map="auto"
-    )
-
-    text = tokenizer.apply_chat_template(
-        convo,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
-
-    # conduct text completion
-    generated_ids = model.generate(
-        **model_inputs,
-        max_new_tokens=32768
-    )
-    output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist() 
-
-    try:
-    # rindex finding 151668 (</think>)
-        index = len(output_ids) - output_ids[::-1].index(151668)
-    except ValueError:
-        index = 0
-
-    content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
-
-    return content
 
 def main(args):
     # run the llm

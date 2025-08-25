@@ -98,8 +98,9 @@ def initial(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--workingdir", type = str) # TODO required
+    parser.add_argument("--workingdir", type = str, required = True) # TODO required
     parser.add_argument("--mode", type = str, default = "initial") # TODO required
+    parser.add_argument("--prompt", type = str)
     
     args = parser.parse_args()
 
