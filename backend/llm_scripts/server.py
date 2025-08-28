@@ -6,7 +6,7 @@ import torch
 import os
 import json
 from dotenv import load_dotenv # i think i might use llama or something here
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 import argparse
 import transformers
 import uvicorn
@@ -27,24 +27,24 @@ def initialize_model():
     # decide offloading stuff for testing
     # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     
-    
-    model_name = "Qwen/Qwen3-4B-Instruct-2507"
+    model_name = "google/gemma-3-270m-it"
+    # config = AutoConfig.from_pretrained(model_name)
+    # print(config.torch_dtype)
     
     model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            device_map="auto",
-            torch_dtype="auto",
+            device_map=None,
+            torch_dtype=torch.float16,
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 def call_llm(convo, chunks):
 
-    converse = convo + [{"role": "user", "content": chunks}]
+    converse = convo + [{"role": "system", "content": chunks}]
 
     text = tokenizer.apply_chat_template(
         converse,
-        tokenize=False,
-        add_generation_prompt=True,
+        tokenize=False,    
     )
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 

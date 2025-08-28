@@ -259,6 +259,11 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Records to upsert: %d", len(records))
 	if len(chunks) == 0 {
 		log.Print("Warning: No chunks generated")
+		// error out here.
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+		w.WriteHeader(http.StatusInternalServerError)               // aw yep
+		w.Write([]byte("Failed to chunk file (python error): " + err.Error()))
+		return
 	}
 
 	// upsert the records to the index
@@ -308,7 +313,7 @@ func chunk_files(uuid string) (chunks []map[string]string) {
 	// there's no temp.json?
 	cmd := exec.Command("bash", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("Failed to run chunking script: %v", err)
+		log.Fatal("Failed to run chunking script: %v", err)
 		return []map[string]string{}
 	}
 	// this creates a json with the uuid
