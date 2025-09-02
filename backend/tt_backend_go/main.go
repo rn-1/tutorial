@@ -1,7 +1,5 @@
 package main
 
-// todo webframe work
-
 import (
 	"context"
 	"encoding/json"
@@ -11,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
 	"github.com/pinecone-io/go-pinecone/v3/pinecone"
+	"github.com/tmc/langchaingo/textsplitter"
 	"gopkg.in/src-d/go-git.v4"
 )
 
@@ -41,13 +41,50 @@ func checkError(err error) {
 	}
 }
 
+func run_textsplitter(uuid string) all_chunks[[]map[string]string] {
+
+	var all_chunks []map[string]string
+
+	files, err := filepath.Glob("./working/*.*")
+	if err != nil {
+		panic("oh fuck bad globbing")
+	}
+
+	for _, file := range files {
+		var split textsplitter.TextSplitter
+		ext := file[Index(file, "."):]
+		if ext == ".md" {
+			split = textsplitter.NewMarkdownTextSplitter(textsplitter.WithChunkSize(1000), textsplitter.WithChunkOverlap(200))
+		} else {
+			split = textsplitter.NewRecursiveCharacter(textsplitter.WithChunkSize(1000), textsplitter.WithChunkOverlap(200))
+		}
+
+		f, err := os.OpenFile(file, os.O_RDONLY, 0644)
+		if err != nil {
+			log.Fatalf("poop: %+v", err)
+		}
+		bytes, err := io.ReadAll(f)
+		checkError(err)
+		chunks, err := split.SplitText(string(bytes))
+		checkError(err)
+		for _, chunk := range chunks {
+			chunk_info := map[string]string{
+				"id":   file,
+				"text": chunk,
+			}
+			all_chunks = append(all_chunks, chunk_info)
+		}
+
+	}
+
+	return all_chunks
+
+}
+
 // Global Variables
 var active_repos []repoSession // this needs some kind of threading or something
 
 func queryRepo(w http.ResponseWriter, r *http.Request) {
-	// TODO
-	// we'll write text in
-	// we should give them a cookie
 
 	ctx := context.Background()
 
@@ -67,10 +104,10 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	text := data["text"]
+	query := data["text"]
 	session := data["sessionid"]
 
-	fmt.Println("Received prompt:", text) // TODO rename text to something more helpful
+	fmt.Println("Received prompt:", query)
 
 	// query the pineconedb
 
@@ -86,7 +123,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 		Query: pinecone.SearchRecordsQuery{
 			TopK: 40, // there's a lot of chunks
 			Inputs: &map[string]interface{}{
-				"text": text,
+				"text": query,
 			},
 		},
 	})
@@ -109,7 +146,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("%s", session)
 
-	command := exec.Command("bash", "../llm_scripts/chat.sh", fmt.Sprintf("./working/%s", session), text)
+	command := exec.Command("bash", "../llm_scripts/chat.sh", fmt.Sprintf("./working/%s", session), query)
 	if err := command.Run(); err != nil {
 		log.Fatalf("Failed to run chat script: %v", err)
 		http.Error(w, "Failed to run chat script: "+err.Error(), http.StatusInternalServerError)
@@ -118,6 +155,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 	path := fmt.Sprintf("./working/%s/output.txt", session)
 
 	f, err := os.Open(path)
+	defer f.Close()
 	if err != nil {
 		// whatever
 	}
@@ -370,9 +408,9 @@ func main() {
 		w.Write([]byte("{\"status\":\"405\"}"))
 	})
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello World!"))
-	}) // TODO get rid off this later.
+	r.Get("/pulse", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Server is alive!"))
+	}) // TODO maybe more info?
 
 	// declaring our routs
 	r.Post("/initialExtract", initialExtraction)
