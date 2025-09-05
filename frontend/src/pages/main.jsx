@@ -15,24 +15,33 @@ const Main = () => {
 
     useEffect(() => {
         const cleanupSession = async () => {
-            if(!localStorage["sessionid"]){
-                return
-            } else{
-                //
-                do{ 
-                    var response = await fetch("http://localhost:8080/cleanup",{
-                        method:"POST",
-                        mode:"cors",
-                        body:JSON.stringify({id:localStorage}),
-                        headers:{
-                            'Content-Type':"application/json"
-                        }
+            if (!localStorage["sessionid"]) {
+                return;
+            } else {
+                await fetch("http://localhost:8080/cleanup", {
+                    method: "POST",
+                    mode: "cors",
+                    body: JSON.stringify({ id: localStorage["sessionid"] }),
+                    headers: {
+                        'Content-Type': "application/json"
                     }
-                )
-                } while(!response.ok);
+                });
             }
-        }
-    })
+        };
+
+        const handleBeforeUnload = (e) => {
+            // Call cleanupSession synchronously (async not supported in beforeunload)
+            cleanupSession();
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+        };
+    }, []);
+
+
     
     async function extractGithub(){
         try{
@@ -60,9 +69,12 @@ const Main = () => {
             localStorage.setItem("sessionid", token) // yay!
             console.log("created session with uuid ",token)
 
-            // console.log(sess.output);
+            console.log(sess.output);
+
             if(sess.output){
                 setMessages(messages => [...messages, {id: 0, text:sess.output, isUser: false}]); 
+            } else {
+                console.warn("no message received?")
             }
 
         } catch(e){

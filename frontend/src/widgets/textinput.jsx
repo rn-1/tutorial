@@ -5,13 +5,13 @@ const Textinput = ({initialVal = "", _placeholder = "", id = "text_input", onsub
 
 
     return(
-        <div id="textinputcontainer" className="flex w-8/12 bg-white h-8 shadow rounded-[15px] items-center border-4 border-red-500 ">
+        <div id="textinputcontainer" className="p-15 flex w-8/12 bg-white h-8 shadow rounded-[15px] items-center">
             <div id="icon_container" className="flex items-center mr-4">
                 <img src={logo} alt="placeholder" className="w-4 h-4"/>
             </div>
-            <form onSubmit={(e) => {e.preventDefault(); onsubmit();}} className="flex flex-1 w-full p-10">
+            <form onSubmit={(e) => {e.preventDefault(); onsubmit();}} className="flex flex-1 w-full focus-within:outline-none">
                 <input
-                    className="border-0 w-full outline-none"
+                    className="w-full outline-none focus:outline-none"
                     placeholder={_placeholder}
                     id={id}
                     defaultValue={initialVal}

@@ -2,5 +2,16 @@ backend/llm_scripts/Include
 backend/llm_scripts/Scripts
 backend/llm_scripts/Lib
 backend/llm_scripts/*.cfg
+
+backend/llm_scripts/bin
+backend/llm_scripts/include
+backend/llm_scripts/lib
+backend/llm_scripts/__pycache__
+
 frontend/node_modules
 backend/secret.txt
+
+backend/tt_backend_go/go.*
+backend/tt_backend_go/.env
+backend/tt_backend_go/working/*
+backend/tt_backend_go/tt_backend

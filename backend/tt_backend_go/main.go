@@ -1,5 +1,7 @@
 package main
 
+//GOD, homeschooled!
+
 import (
 	"context"
 	"encoding/json"
@@ -8,8 +10,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -20,39 +23,61 @@ import (
 	"gopkg.in/src-d/go-git.v4"
 )
 
-// ROUTES
-//
-//	There should probably be a serverside component for chatbot respones. also throbbers are needed
+// ** Global Variables and Types
+type repostore struct {
+	m        sync.Mutex
+	repolist []repoSession // this needs some kind of threading or something
+}
+
+var active_repos repostore
+
+type repoSession struct {
+	url   string
+	token string
+	convo []map[string]string
+	// maybe some other characteristics? we'll see as we need.
+}
+
+var pineconeClient *pinecone.Client
+
+// ** Utility functions
 
 func slice_remove(s []repoSession, i int) []repoSession {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]
 }
 
-type repoSession struct {
-	url   string
-	token string
-	// maybe some other characteristics? we'll see as we need.
-}
-
 func checkError(err error) {
 	if err != nil {
+		log.Printf("error: %+v", err)
 		panic("fuck")
 	}
 }
 
-func run_textsplitter(uuid string) all_chunks[[]map[string]string] {
-
-	var all_chunks []map[string]string
-
-	files, err := filepath.Glob("./working/*.*")
+func initPineconeClient() (client *pinecone.Client) {
+	apiKey := "pcsk_4LZnij_JbQL6KR82nhsGvnLk1PjzTwH91cMUEWwR7SpvTWNauPzGkoGomiex8rFqysZ22Z" // TODO remove this plssss
+	client, err := pinecone.NewClient(pinecone.NewClientParams{
+		ApiKey: apiKey,
+	})
 	if err != nil {
+		log.Fatalf("Failed to create Client: %v", err)
+		return nil
+	}
+	return client
+}
+
+func run_textsplitter(uuid string) (all_chunks []map[string]string) {
+
+	files, err := filepath.Glob(fmt.Sprintf("./working/%s/*.*[^o]", uuid)) // TODO build a better way to properly pull out files.
+	if err != nil || len(files) == 0 {
 		panic("oh fuck bad globbing")
 	}
 
 	for _, file := range files {
 		var split textsplitter.TextSplitter
-		ext := file[Index(file, "."):]
+		log.Printf("indexing...")
+		ext := file[strings.Index(file, "."):]
+		log.Printf("done indexing!")
 		if ext == ".md" {
 			split = textsplitter.NewMarkdownTextSplitter(textsplitter.WithChunkSize(1000), textsplitter.WithChunkOverlap(200))
 		} else {
@@ -64,12 +89,14 @@ func run_textsplitter(uuid string) all_chunks[[]map[string]string] {
 			log.Fatalf("poop: %+v", err)
 		}
 		bytes, err := io.ReadAll(f)
-		checkError(err)
+		if err != nil {
+			log.Printf("Failure to chunk file %s: %v", file, err)
+		}
 		chunks, err := split.SplitText(string(bytes))
 		checkError(err)
 		for _, chunk := range chunks {
 			chunk_info := map[string]string{
-				"id":   file,
+				"id":   strings.Replace(file, fmt.Sprintf("working/%s/", uuid), "", 1),
 				"text": chunk,
 			}
 			all_chunks = append(all_chunks, chunk_info)
@@ -81,12 +108,134 @@ func run_textsplitter(uuid string) all_chunks[[]map[string]string] {
 
 }
 
-// Global Variables
-var active_repos []repoSession // this needs some kind of threading or something
+func retrieve_db(query string, session string) (records []pinecone.Hit, err error) {
+
+	log.Printf("attempting to search db")
+
+	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: session})
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := idxConnection.SearchRecords(context.Background(), &pinecone.SearchRecordsRequest{
+		Query: pinecone.SearchRecordsQuery{
+			TopK: 40, // there's a lot of chunks
+			Inputs: &map[string]interface{}{
+				"text": query,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Found %d hits", len(res.Result.Hits))
+	return res.Result.Hits, nil
+}
+
+func assemble_messages(repo *repoSession, query string, session string) (convo []map[string]string) {
+
+	convo = repo.convo // extract existing conversation
+
+	convo = append(convo, map[string]string{"role": "user", "content": query})
+
+	records, err := retrieve_db(query, session)
+	checkError(err)
+	message := "**Additional context extracted from the codebase:**\n"
+	for _, record := range records {
+		message += "From file " + record.Id + ":\n\t" + fmt.Sprintf("%v", record.Fields["text"]) + "\n"
+	}
+
+	convo = append(convo, map[string]string{"role": "system", "content": message})
+
+	repo.convo = convo
+
+	return convo
+}
+
+// OBSOLETE
+
+// func chunk_files(uuid string) (chunks []map[string]string) {
+// 	// there's no temp.json?
+// 	cmd := exec.Command("bash", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
+// 	if err := cmd.Run(); err != nil {
+// 		log.Fatal("Failed to run chunking script: %v", err)
+// 		return []map[string]string{}
+// 	}
+// 	// this creates a json with the uuid
+// 	// defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid)) // don't get rid of it yet
+// 	file, err := os.Open(fmt.Sprintf("./working/%s/temp.json", uuid))
+// 	if err != nil {
+// 		log.Fatalf("Failed to open temp.json: %v", err)
+// 		return []map[string]string{}
+// 	}
+// 	defer file.Close()
+
+// 	decoder := json.NewDecoder(file)
+// 	if err := decoder.Decode(&chunks); err != nil {
+// 		log.Fatalf("Failed to decode temp.json: %v", err)
+// 		return []map[string]string{}
+// 	}
+// 	// log.Printf("%+v", chunks)
+// 	return chunks
+// }
+
+func call_llm(convo []map[string]string) (output string) {
+
+	payload := map[string]interface{}{
+		"conversation": convo,
+	}
+
+	var buf strings.Builder
+	enc := json.NewEncoder(&buf)
+	err := enc.Encode(payload)
+	checkError(err)
+	resp, err := http.Post("http://localhost:8000/generate", "application/json", strings.NewReader(buf.String()))
+	checkError(err)
+
+	// reuse byte? may be bad idea
+	raw, err := io.ReadAll(resp.Body)
+	checkError(err)
+	log.Printf("%+v", raw)
+	var content map[string]string
+	err = json.Unmarshal(raw, &content)
+	checkError(err)
+	log.Printf("%+v", content)
+
+	return content["response"]
+}
+
+func cloneGithub(url string) (uid string) {
+
+	log.Println("cloning " + url)
+
+	cloneOptions := &git.CloneOptions{
+		URL: url,
+	}
+	token := uuid.Must(uuid.NewRandom())
+	idtoken := fmt.Sprintf("%x", token)
+
+	log.Println(fmt.Sprintf("cloning to directory ./working/%s/", idtoken))
+
+	_, err := git.PlainClone(fmt.Sprintf("./working/%s/", idtoken), false, cloneOptions)
+
+	session := repoSession{url: url, token: idtoken}
+
+	active_repos.m.Lock()
+	defer active_repos.m.Unlock()
+	active_repos.repolist = append(active_repos.repolist, session) // we can parse the url later
+
+	if err != nil {
+		log.Fatalf("[ERR] FAILED TO CLONE: ", url)
+		return ""
+	}
+
+	return idtoken
+
+}
+
+// ** Route Functions
 
 func queryRepo(w http.ResponseWriter, r *http.Request) {
-
-	ctx := context.Background()
 
 	log.Print("working")
 
@@ -109,64 +258,28 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Received prompt:", query)
 
-	// query the pineconedb
-
-	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: session})
-	if err != nil {
-		log.Fatalf("Failed to create IndexConnection for Host: %v", err)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-		w.WriteHeader(http.StatusInternalServerError)               // aw yep
-		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
-	}
-
-	res, err := idxConnection.SearchRecords(ctx, &pinecone.SearchRecordsRequest{
-		Query: pinecone.SearchRecordsQuery{
-			TopK: 40, // there's a lot of chunks
-			Inputs: &map[string]interface{}{
-				"text": query,
-			},
-		},
-	})
-	if err != nil {
-		http.Error(w, "Failed to search records: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("records: %+v", res)
-
 	// write these out to the tempfile, truncate the tempfile
-	dir := fmt.Sprintf("./working/%s/temp.json", session)
-	file, _ := os.OpenFile(dir, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 
-	defer file.Close()
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(res.Result.Hits); err != nil {
-		log.Printf("failed to write retrieved json")
+	active_repos.m.Lock()
+	var repo *repoSession
+	for i := range active_repos.repolist {
+		if active_repos.repolist[i].token == session {
+			repo = &active_repos.repolist[i]
+			break
+		}
 	}
-
-	log.Printf("%s", session)
-
-	command := exec.Command("bash", "../llm_scripts/chat.sh", fmt.Sprintf("./working/%s", session), query)
-	if err := command.Run(); err != nil {
-		log.Fatalf("Failed to run chat script: %v", err)
-		http.Error(w, "Failed to run chat script: "+err.Error(), http.StatusInternalServerError)
-	}
-
-	path := fmt.Sprintf("./working/%s/output.txt", session)
-
-	f, err := os.Open(path)
-	defer f.Close()
-	if err != nil {
-		// whatever
-	}
-	output, err := io.ReadAll(f)
-	if err != nil {
-		log.Fatalf("Failed to read output: %v", err)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-		w.WriteHeader(http.StatusInternalServerError)               // aw yep
-		w.Write([]byte("Failed to read output: " + err.Error()))
+	assembled := assemble_messages(repo, query, session)
+	active_repos.m.Unlock()
+	if repo == nil {
+		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
+
+	output := call_llm(assembled)
+
+	active_repos.m.Lock()
+	repo.convo = append(repo.convo, map[string]string{"role": "assistant", "content": output})
+	active_repos.m.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]string{
@@ -192,55 +305,27 @@ func cleanUpRepo(w http.ResponseWriter, r *http.Request) { // how the fuck do i 
 	token := data["id"]
 
 	os.RemoveAll(fmt.Sprintf("./working/%s", token))
-	for index, session := range active_repos {
+
+	// now to delete the namespace
+
+	idxconnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: token})
+	checkError(err)
+
+	err = idxconnection.DeleteAllVectorsInNamespace(context.Background())
+	checkError(err)
+
+	active_repos.m.Lock()
+	defer active_repos.m.Unlock()
+	for index, session := range active_repos.repolist {
 		if session.token == token {
-			active_repos = slice_remove(active_repos, index) // doesn't matter ig.
+
+			active_repos.repolist = slice_remove(active_repos.repolist, index) // doesn't matter ig.
 		}
 	}
 	log.Printf("Cleaned session with id %s", token)
 
 	w.WriteHeader(http.StatusOK)
 }
-
-func cloneGithub(url string) (uid string) {
-
-	log.Println("cloning " + url)
-
-	cloneOptions := &git.CloneOptions{
-		URL: url,
-	}
-	token := uuid.Must(uuid.NewRandom())
-	idtoken := fmt.Sprintf("%x", token)
-
-	log.Println(fmt.Sprintf("cloning to directory ./working/%s/", idtoken))
-
-	_, err := git.PlainClone(fmt.Sprintf("./working/%s/", idtoken), false, cloneOptions)
-
-	session := repoSession{url: url, token: idtoken}
-	active_repos = append(active_repos, session) // we can parse the url later
-
-	if err != nil {
-		log.Fatalf("[ERR] FAILED TO CLONE: ", url)
-		return ""
-	}
-
-	return idtoken
-
-}
-
-func initPineconeClient() (client *pinecone.Client) {
-	apiKey := "pcsk_4LZnij_JbQL6KR82nhsGvnLk1PjzTwH91cMUEWwR7SpvTWNauPzGkoGomiex8rFqysZ22Z" // TODO remove this plssss
-	client, err := pinecone.NewClient(pinecone.NewClientParams{
-		ApiKey: apiKey,
-	})
-	if err != nil {
-		log.Fatalf("Failed to create Client: %v", err)
-		return nil
-	}
-	return client
-}
-
-var pineconeClient *pinecone.Client
 
 func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
@@ -278,13 +363,15 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Chunking files...")
-	chunks := chunk_files(token)
+	chunks := run_textsplitter(token)
+
+	log.Printf("Done!")
 
 	var records []*pinecone.IntegratedRecord
 
 	for _, text := range chunks {
-		// log.Printf("id is %s", text["id"])
-		// log.Printf("text is %s", text["text"])
+		log.Printf("id is %s", text["id"])
+		log.Printf("text is %s", text["text"])
 		record := &pinecone.IntegratedRecord{
 			"id":   text["id"],
 			"text": text["text"],
@@ -318,22 +405,21 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	// json.NewEncoder(w).Encode(response)
 	log.Printf("Successfully cloned and indexed repository: %s with token: %s", url, token)
 
-	// model will run when this happens. read out from file
+	// call the llm endpoint, first call with all chunks
 
-	path := fmt.Sprintf("./working/%s/output.txt", token)
+	init_convo := []map[string]string{
+		{"role": "system", "content": "You are an AI assistant that is an expert in reading and understanding code. Your task is to answer questions, asked by the user, about a specified code base based on the content of its files. Give a short synopsis of the following: \n\t1: What is this code meant to do? \n\t2:How does it accomplish this? Refer to specific sections of code or practices used in the codebase \n\t3: What are the basic things one must know to be able to use the codebase effectively in their own projects?\n Please refer to the code that is given as many times as is needed, and provide as much detail as you feel is needed. You may further need to ask the user what specific functionality they want out of the codebase, and adjust your later responses accordingly."},
+		{"role": "user", "content": "How can I get started with using this code repository for myself?"},
+	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		// whatever
+	assembled_rag := "**Additional context extracted from the codebase:**\n"
+	for _, chunk := range chunks {
+		assembled_rag += "From file " + chunk["id"] + ":\n\t" + chunk["text"]
 	}
-	output, err := io.ReadAll(f)
-	if err != nil {
-		log.Fatalf("Failed to read output: %v", err)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-		w.WriteHeader(http.StatusInternalServerError)               // aw yep
-		w.Write([]byte("Failed to read output: " + err.Error()))
-		return
-	}
+
+	init_convo = append(init_convo, map[string]string{"role": "system", "content": assembled_rag})
+
+	output := call_llm(init_convo)
 
 	log.Println("All is well")
 
@@ -347,30 +433,7 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func chunk_files(uuid string) (chunks []map[string]string) {
-	// there's no temp.json?
-	cmd := exec.Command("bash", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
-	if err := cmd.Run(); err != nil {
-		log.Fatal("Failed to run chunking script: %v", err)
-		return []map[string]string{}
-	}
-	// this creates a json with the uuid
-	// defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid)) // don't get rid of it yet
-	file, err := os.Open(fmt.Sprintf("./working/%s/temp.json", uuid))
-	if err != nil {
-		log.Fatalf("Failed to open temp.json: %v", err)
-		return []map[string]string{}
-	}
-	defer file.Close()
-
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&chunks); err != nil {
-		log.Fatalf("Failed to decode temp.json: %v", err)
-		return []map[string]string{}
-	}
-	// log.Printf("%+v", chunks)
-	return chunks
-}
+// ** Main function
 
 func main() {
 

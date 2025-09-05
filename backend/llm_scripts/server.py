@@ -17,7 +17,6 @@ import uvicorn
 
 class Prompt(BaseModel):
     conversation: List[dict]
-    chunks: str
 
 
 def initialize_model():
@@ -38,12 +37,14 @@ def initialize_model():
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-def call_llm(convo, chunks):
+def call_llm(convo):
 
-    converse = convo + [{"role": "system", "content": chunks}]
+    # print(convo)
+    return "debug"
+
 
     text = tokenizer.apply_chat_template(
-        converse,
+        convo,
         tokenize=False,    
     )
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
@@ -63,8 +64,6 @@ def call_llm(convo, chunks):
 
     content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
 
-    # content = "debug_output" # TODO undo this
-
     return content
 
 app = FastAPI()
@@ -79,6 +78,5 @@ def generate(prompt: Prompt) -> Dict[str, Any]:
     # parse the conversation and chunks
     print("generating...")
     messages = prompt.conversation
-    chunks = prompt.chunks
-    output = call_llm(messages, chunks)
+    output = call_llm(messages)
     return {"status": "success", "response": output}
