@@ -152,6 +152,10 @@ func assemble_messages(repo *repoSession, query string, session string) (convo [
 	return convo
 }
 
+func call_api_llm(convo []map[string]string) (output string) {
+
+}
+
 func call_llm(convo []map[string]string) (output string) {
 
 	payload := map[string]interface{}{
