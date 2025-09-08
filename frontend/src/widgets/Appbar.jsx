@@ -1,10 +1,11 @@
 import '../output.css'
+// import '../main.css'
 
 
 const Appbar = () => {
 
     return (
-        <div className = "pb-20 w-full bg-white shadow h-4 text-black font-bold flex items-center justify-center">
+        <div className = "w-full bg-gray-800 shadow h-16 text-white font-bold text-2xl flex items-center justify-center">
             <h1>tutorial</h1>
         </div>
     );

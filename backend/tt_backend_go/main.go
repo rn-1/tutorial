@@ -152,33 +152,6 @@ func assemble_messages(repo *repoSession, query string, session string) (convo [
 	return convo
 }
 
-// OBSOLETE
-
-// func chunk_files(uuid string) (chunks []map[string]string) {
-// 	// there's no temp.json?
-// 	cmd := exec.Command("bash", "../llm_scripts/initextract.sh", fmt.Sprintf("./working/%s/", uuid)) // args?
-// 	if err := cmd.Run(); err != nil {
-// 		log.Fatal("Failed to run chunking script: %v", err)
-// 		return []map[string]string{}
-// 	}
-// 	// this creates a json with the uuid
-// 	// defer os.Remove(fmt.Sprintf("./working/%s/temp.json", uuid)) // don't get rid of it yet
-// 	file, err := os.Open(fmt.Sprintf("./working/%s/temp.json", uuid))
-// 	if err != nil {
-// 		log.Fatalf("Failed to open temp.json: %v", err)
-// 		return []map[string]string{}
-// 	}
-// 	defer file.Close()
-
-// 	decoder := json.NewDecoder(file)
-// 	if err := decoder.Decode(&chunks); err != nil {
-// 		log.Fatalf("Failed to decode temp.json: %v", err)
-// 		return []map[string]string{}
-// 	}
-// 	// log.Printf("%+v", chunks)
-// 	return chunks
-// }
-
 func call_llm(convo []map[string]string) (output string) {
 
 	payload := map[string]interface{}{
@@ -290,7 +263,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func cleanUpRepo(w http.ResponseWriter, r *http.Request) { // how the fuck do i do this?
+func cleanUpRepo(w http.ResponseWriter, r *http.Request) {
 	// now we will do all of this via the tokens as opposed to the string names
 
 	//TODO define some generic error functions. Make this simple.

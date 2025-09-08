@@ -40,7 +40,7 @@ def initialize_model():
 def call_llm(convo):
 
     # print(convo)
-    return "debug"
+    # return "debug"
 
 
     text = tokenizer.apply_chat_template(

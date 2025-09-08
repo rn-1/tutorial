@@ -1,6 +1,7 @@
 import Main from './pages/main.jsx'
 
 import './output.css';
+// import './main.css'
 
 
 
