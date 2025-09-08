@@ -153,7 +153,7 @@ func assemble_messages(repo *repoSession, query string, session string) (convo [
 }
 
 func call_api_llm(convo []map[string]string) (output string) {
-
+	return ""
 }
 
 func call_llm(convo []map[string]string) (output string) {
