@@ -12,6 +12,7 @@ import { useState, useEffect } from "react";
 const Main = () => {
 
     const [messages, setMessages] = useState([])
+    const [loading, setLoading] = useState(0)
 
     useEffect(() => {
         const cleanupSession = async () => {
@@ -55,6 +56,7 @@ const Main = () => {
                 console.log("empty repo link, ignore")
                 return;
             } // TODO: check that it is a valid URL
+            setLoading(1)
             const response = await fetch("http://localhost:8080/initialExtract", {
                     method: "POST", 
                     mode:"cors", 
@@ -64,7 +66,7 @@ const Main = () => {
                     }
                 }
             ).then(resp => resp.text());
-
+            setLoading(0)
             // console.log(response)
 
             let sess = JSON.stringify(response)
@@ -76,7 +78,7 @@ const Main = () => {
             console.log("created session with uuid ",token)
 
             // console.log(sess.output);
-
+            
             if(sess.output){
                 setMessages(messages => [...messages, {id: 0, text:sess.output, isUser: false}]); 
             } else {
@@ -90,8 +92,11 @@ const Main = () => {
     }
 
     return (
-        <div className="bg-gray-900 min-h-screen flex flex-col">
+        <div className="bg-gray-900 min-h-screen flex flex-col items-center">
             <Appbar/>
+            <div className = {`mt-4 bg-gray-800 px-6 text-gray-400 items-center justify-center flex rounded-[15px] ${loading? "visible" : "hidden"}`}>
+                <p className="animate-pulse">working...</p>
+            </div>
             <div 
                 id="body" 
                 className="w-full bg-gray-900 flex flex-col items-center pt-20 px-4 flex-grow"

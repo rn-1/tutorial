@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"github.com/pinecone-io/go-pinecone/v3/pinecone"
 	"github.com/tmc/langchaingo/textsplitter"
 	"gopkg.in/src-d/go-git.v4"
@@ -55,8 +56,10 @@ func checkError(err error) {
 }
 
 func initPineconeClient() (client *pinecone.Client) {
-	apiKey := "pcsk_4LZnij_JbQL6KR82nhsGvnLk1PjzTwH91cMUEWwR7SpvTWNauPzGkoGomiex8rFqysZ22Z" // TODO remove this plssss
-	client, err := pinecone.NewClient(pinecone.NewClientParams{
+	err := godotenv.Load()
+	checkError(err)
+	apiKey := os.Getenv("PC_API_KEY")
+	client, err = pinecone.NewClient(pinecone.NewClientParams{
 		ApiKey: apiKey,
 	})
 	if err != nil {
@@ -153,7 +156,53 @@ func assemble_messages(repo *repoSession, query string, session string) (convo [
 }
 
 func call_api_llm(convo []map[string]string) (output string) {
-	return ""
+
+	payload := map[string]interface{}{
+		"model": "gpt-4o",
+		"input": convo,
+	}
+
+	var buf strings.Builder
+	enc := json.NewEncoder(&buf)
+	err := enc.Encode(payload)
+	checkError(err)
+
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/responses", strings.NewReader(buf.String()))
+	checkError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", os.Getenv("GPT_KEY")))
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	checkError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	log.Printf("%+v", raw)
+	checkError(err)
+
+	var content map[string]interface{}
+	err = json.Unmarshal(raw, &content)
+	checkError(err)
+
+	log.Printf("%+v", content)
+
+	outputArr := content["output"].([]interface{}) // output is a slice of maps
+	firstOutput := outputArr[0].(map[string]interface{})
+	contentArr := firstOutput["content"].([]interface{}) // content is a slice of maps
+	firstContent := contentArr[0].(map[string]interface{})
+	output = firstContent["text"].(string)
+
+	// client := openai.NewClient(
+	// 	option.WithAPIKey(os.Getenv("GPT_KEY")), // defaults to os.LookupEnv("OPENAI_API_KEY")
+	// )
+	// chatCompletion, err := client.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
+	// 	Messages: []openai.ChatCompletionMessageParamUnion{
+	// 		openai.UserMessage("Say this is a test"),
+	// 	},
+	// 	Model: openai.ChatModelGPT4o,
+	// })
+
+	return
 }
 
 func call_llm(convo []map[string]string) (output string) {
@@ -202,6 +251,7 @@ func cloneGithub(url string) (uid string) {
 	active_repos.repolist = append(active_repos.repolist, session) // we can parse the url later
 
 	if err != nil {
+		checkError(err)
 		log.Fatalf("[ERR] FAILED TO CLONE: ", url)
 		return ""
 	}
@@ -252,7 +302,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	output := call_llm(assembled)
+	output := call_api_llm(assembled)
 
 	active_repos.m.Lock()
 	repo.convo = append(repo.convo, map[string]string{"role": "assistant", "content": output})
@@ -396,7 +446,7 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 
 	init_convo = append(init_convo, map[string]string{"role": "system", "content": assembled_rag})
 
-	output := call_llm(init_convo)
+	output := call_api_llm(init_convo)
 
 	log.Println("All is well")
 
