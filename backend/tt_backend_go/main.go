@@ -71,9 +71,10 @@ func initPineconeClient() (client *pinecone.Client) {
 
 func run_textsplitter(uuid string) (all_chunks []map[string]string) {
 
-	files, err := filepath.Glob(fmt.Sprintf("./working/%s/*.*[^o]", uuid)) // TODO build a better way to properly pull out files.
+	// we'll need to better define this in the future but this fixes.
+	files, err := filepath.Glob(fmt.Sprintf("./working/%s/**/*.*[^o]", uuid)) // TODO build a better way to properly pull out files.
 	if err != nil || len(files) == 0 {
-		panic("oh fuck bad globbing")
+		panic("bad globbing")
 	}
 
 	for _, file := range files {
@@ -205,6 +206,7 @@ func call_api_llm(convo []map[string]string) (output string) {
 	return
 }
 
+// unused
 func call_llm(convo []map[string]string) (output string) {
 
 	payload := map[string]interface{}{
