@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -71,20 +73,72 @@ func initPineconeClient() (client *pinecone.Client) {
 
 func run_textsplitter(uuid string) (all_chunks []map[string]string) {
 
-	files, err := filepath.Glob(fmt.Sprintf("./working/%s/*.*[^o]", uuid)) // TODO build a better way to properly pull out files.
+	root := filepath.Join("./working", uuid)
+
+	var files []string
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error { // alter this walk to get better results.
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		// Read a small prefix and check encoding (accept UTF-8 and ASCII; skip binary/non-UTF-8)
+		fh, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		defer fh.Close()
+
+		prefix := make([]byte, 4096)
+		n, err := fh.Read(prefix)
+		if err != nil && err != io.EOF {
+			return nil
+		}
+		prefix = prefix[:n]
+
+		// requires importing "unicode/utf8"
+		if !utf8.Valid(prefix) {
+			// not valid UTF-8 -> skip (likely binary/other encoding)
+			return nil
+		}
+
+		// optional: detect pure ASCII (all bytes < 0x80)
+		isASCII := true
+		for _, b := range prefix {
+			if b >= 0x80 {
+				isASCII = false
+				break
+			}
+		}
+		_ = isASCII // use this flag if you need to treat ASCII differently
+
+		files = append(files, path)
+		return nil
+	})
+
 	if err != nil || len(files) == 0 {
-		panic("oh fuck bad globbing")
+		panic("error while globbing")
 	}
+
+	log.Printf("File list:\n %+v\n", files)
 
 	for _, file := range files {
 		var split textsplitter.TextSplitter
 		log.Printf("indexing...")
+		if !strings.Contains(file, ".") {
+			continue
+		}
+
 		ext := file[strings.Index(file, "."):]
 		log.Printf("done indexing!")
 		if ext == ".md" {
-			split = textsplitter.NewMarkdownTextSplitter(textsplitter.WithChunkSize(1000), textsplitter.WithChunkOverlap(200))
+			split = textsplitter.NewMarkdownTextSplitter(textsplitter.WithChunkSize(1000), textsplitter.WithChunkOverlap(100))
 		} else {
-			split = textsplitter.NewRecursiveCharacter(textsplitter.WithChunkSize(1000), textsplitter.WithChunkOverlap(200))
+			split = textsplitter.NewRecursiveCharacter(textsplitter.WithChunkSize(1000), textsplitter.WithChunkOverlap(100))
 		}
 
 		f, err := os.OpenFile(file, os.O_RDONLY, 0644)
@@ -221,11 +275,11 @@ func call_llm(convo []map[string]string) (output string) {
 	// reuse byte? may be bad idea
 	raw, err := io.ReadAll(resp.Body)
 	checkError(err)
-	log.Printf("%+v", raw)
+	// log.Printf("%+v", raw)
 	var content map[string]string
 	err = json.Unmarshal(raw, &content)
 	checkError(err)
-	log.Printf("%+v", content)
+	// log.Printf("%+v", content)
 
 	return content["response"]
 }
@@ -313,7 +367,7 @@ func queryRepo(w http.ResponseWriter, r *http.Request) {
 		"output": string(output),
 	}
 	json.NewEncoder(w).Encode(response)
-	log.Printf("%v", response)
+	// log.Printf("%v", response)
 
 }
 
@@ -381,13 +435,6 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	// DEBUG
 
 	// upsert to pinecone db
-	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: token})
-	if err != nil {
-		log.Fatalf("Failed to create IndexConnection for Host: %v", err)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
-		w.WriteHeader(http.StatusInternalServerError)               // aw yep
-		w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
-	}
 
 	log.Printf("Chunking files...")
 	chunks := run_textsplitter(token)
@@ -397,8 +444,8 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	var records []*pinecone.IntegratedRecord
 
 	for _, text := range chunks {
-		log.Printf("id is %s", text["id"])
-		log.Printf("text is %s", text["text"])
+		// log.Printf("id is %s", text["id"])
+		// log.Printf("text is %s", text["text"])
 		record := &pinecone.IntegratedRecord{
 			"id":   text["id"],
 			"text": text["text"],
@@ -419,7 +466,18 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// upsert the records to the index
-	err = idxConnection.UpsertRecords(ctx, records)
+	if len(records) > 96 {
+		err = streamUpsert(records, token)
+	} else {
+		idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: token})
+		if err != nil {
+			log.Fatalf("Failed to create IndexConnection for Host: %v", err)
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
+			w.WriteHeader(http.StatusInternalServerError)               // aw yep
+			w.Write([]byte("Failed to create IndexConnection for Host: " + err.Error()))
+		}
+		err = idxConnection.UpsertRecords(ctx, records)
+	}
 	if err != nil {
 		log.Fatalf("Failed to upsert records: %v", err)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8") // normal header
@@ -440,8 +498,14 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	assembled_rag := "**Additional context extracted from the codebase:**\n"
-	for _, chunk := range chunks {
-		assembled_rag += "From file " + chunk["id"] + ":\n\t" + chunk["text"]
+
+	// this is really fucking bad
+
+	// TODO tune this query.
+	rag_chunks, err := retrieve_db("Documentation README read important entry guide comments outline", token)
+
+	for _, record := range rag_chunks {
+		assembled_rag += "From file " + record.Id + ":\n\t" + fmt.Sprintf("%v", record.Fields["text"]) + "\n"
 	}
 
 	init_convo = append(init_convo, map[string]string{"role": "system", "content": assembled_rag})
@@ -456,8 +520,63 @@ func initialExtraction(w http.ResponseWriter, r *http.Request) {
 		"output": string(output),
 	}
 	json.NewEncoder(w).Encode(response)
-	log.Printf("%v", response)
+	// log.Printf("%v", response)
+}
 
+func streamUpsert(records []*pinecone.IntegratedRecord, token string) error {
+	const batchSize = 96
+	n := len(records)
+	if n == 0 {
+		return nil
+	}
+
+	nBatches := (n + batchSize - 1) / batchSize
+
+	ctx := context.Background()
+
+	idxConnection, err := pineconeClient.Index(pinecone.NewIndexConnParams{Host: "debug-index-g9pn9ot.svc.aped-4627-b74a.pinecone.io", Namespace: token})
+	if err != nil {
+		return err
+	}
+
+	// bounded concurrency to avoid overwhelming the API / local resources
+	concurrency := 8
+	if nBatches < concurrency {
+		concurrency = nBatches
+	}
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	errCh := make(chan error, nBatches)
+
+	for i := 0; i < nBatches; i++ {
+		start := i * batchSize
+		end := start + batchSize
+		if end > n {
+			end = n
+		}
+		batch := records[start:end]
+
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(b []*pinecone.IntegratedRecord) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if upErr := idxConnection.UpsertRecords(ctx, b); upErr != nil {
+				errCh <- upErr
+			}
+		}(batch)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	// return first error if any
+	for e := range errCh {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 // ** Main function
