@@ -20,7 +20,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"github.com/pinecone-io/go-pinecone/v3/pinecone"
 	"github.com/tmc/langchaingo/textsplitter"
 	"gopkg.in/src-d/go-git.v4"
@@ -58,10 +57,10 @@ func checkError(err error) {
 }
 
 func initPineconeClient() (client *pinecone.Client) {
-	err := godotenv.Load()
-	checkError(err)
+	// err := godotenv.Load() # UNCOMMENT IF ENV VARIABLES NOT SPECIFIED
+	// checkError(err)
 	apiKey := os.Getenv("PC_API_KEY")
-	client, err = pinecone.NewClient(pinecone.NewClientParams{
+	client, err := pinecone.NewClient(pinecone.NewClientParams{
 		ApiKey: apiKey,
 	})
 	if err != nil {
