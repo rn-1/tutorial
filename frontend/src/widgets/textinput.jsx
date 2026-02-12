@@ -1,4 +1,3 @@
-import logo from '../logo.svg';
 import linkicon from '../link_icon.png'
 import '../output.css';
 // import '../main.css';

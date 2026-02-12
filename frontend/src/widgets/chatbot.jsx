@@ -14,7 +14,9 @@ const ChatbotInterface = ({ initialMessages = [], messages, setMessages }) => {
     const [loading, setLoading] = useState(0);
     const messagesEndRef = useRef(null);
 
-    // Auto-scroll to bottom when messages change
+    console.log(hasToken); // shitty hack fix
+
+    // Auto-scroll to bottom when messages change # this looks unused?
     useEffect(() => {
         if (localStorage.getItem("sessionid")) {
             setToken(1);
