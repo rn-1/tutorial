@@ -20,7 +20,7 @@ const Main = () => {
                 return;
             } else {
                 try{
-                    await fetch("http://localhost:8080/cleanup", {
+                    await fetch("http://tutorial-vfba.onrender.com:8080/cleanup", {
                         method: "POST",
                         mode: "cors",
                         body: JSON.stringify({ id: localStorage["sessionid"] }),
