@@ -57,7 +57,7 @@ const Main = () => {
                 return;
             } // TODO: check that it is a valid URL
             setLoading(1)
-            const response = await fetch("http://localhost:8080/initialExtract", {
+            const response = await fetch("http://tutorial-vfba.onrender.com:8080/initialExtract", {
                     method: "POST", 
                     mode:"cors", 
                     body: url,
