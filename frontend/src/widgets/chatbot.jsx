@@ -49,7 +49,7 @@ const ChatbotInterface = ({ initialMessages = [], messages, setMessages }) => {
         try {
             const sessionId = localStorage.getItem('sessionid');
             setLoading(1);
-            const response = await fetch("http://tutorial-vfba.onrender.com:8080/queryRepo", {
+            const response = await fetch("http://tutorial-vfba.onrender.com/queryRepo", {
                 method: "POST",
                 mode: "cors",
                 body: JSON.stringify({
