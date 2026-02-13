@@ -20,7 +20,7 @@ const Main = () => {
                 return;
             } else {
                 try{
-                    await fetch("http://tutorial-vfba.onrender.com:8080/cleanup", {
+                    await fetch("https://tutorial-vfba.onrender.com:8080/cleanup", {
                         method: "POST",
                         mode: "cors",
                         body: JSON.stringify({ id: localStorage["sessionid"] }),
@@ -57,7 +57,7 @@ const Main = () => {
                 return;
             } // TODO: check that it is a valid URL
             setLoading(1)
-            const response = await fetch("http://tutorial-vfba.onrender.com:8080/initialExtract", {
+            const response = await fetch("https://tutorial-vfba.onrender.com:8080/initialExtract", {
                     method: "POST", 
                     mode:"cors", 
                     body: url,
